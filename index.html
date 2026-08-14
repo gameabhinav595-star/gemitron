@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>JARVIS / ULTRON ADVANCED 3D HUD - SMOOTH GRAB</title>
+    <title>JARVIS / ULTRON ADVANCED 3D HUD - ONLINE LINKED</title>
     <style>
         body { 
             margin: 0; 
@@ -55,7 +55,7 @@
         #code-right { right: 20px; width: 230px; text-align: right; }
 
         .status { color: #00f3ff; font-size: 13px; margin-top: 5px; font-weight: bold; }
-        #ai-text { color: #00ffff; font-size: 18px; margin-top: 10px; font-weight: bold; max-width: 600px; }
+        #ai-text { color: #00ffff; font-size: 16px; margin-top: 10px; font-weight: bold; max-width: 600px; text-shadow: 0 0 10px #00ffff; }
 
         #reticle {
             position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
@@ -74,9 +74,9 @@
     <div class="hud-corner bottom-right"></div>
 
     <div id="overlay">
-        SYSTEM: MARK-VII ARC HUD [SMOOTH ARCBALL]<br>
-        <div class="status" id="status-text">STATUS: INITIALIZING...</div>
-        <div id="ai-text"></div>
+        SYSTEM: MARK-VII ARC HUD [PYTHON BRAIN LINKED]<br>
+        <div class="status" id="status-text">STATUS: INITIALIZING SYSTEM...</div>
+        <div id="ai-text">AWAITING BACKEND LINK...</div>
     </div>
 
     <div id="code-left" class="code-panel"></div>
@@ -97,10 +97,57 @@
         const statusText = document.getElementById('status-text');
         const aiText = document.getElementById('ai-text');
 
-        // --- 1. TELEMETRY STREAM ---
+        // --- 1. WEBSOCKET PYTHON BRAIN CONNECTOR ---
+        let voiceVolume = 0.0;
+        function connectBrain() {
+            // Connects to local Python websocket bridge
+            const ws = new WebSocket("ws://localhost:8765");
+
+            ws.onopen = () => {
+                statusText.innerText = "STATUS: PYTHON BACKEND LINKED // ONLINE";
+                statusText.style.color = "#00ff88";
+            };
+
+            ws.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                
+                if (data.text) {
+                    aiText.innerText = "JARVIS: " + data.text;
+                }
+
+                if (data.status === "listening") {
+                    statusText.innerText = "STATUS: LISTENING FOR VOICE COMMAND...";
+                    statusText.style.color = "#ffaa00";
+                    updateCoreColor(0xffaa00);
+                } else if (data.status === "thinking") {
+                    statusText.innerText = "STATUS: GEMINI AI PROCESSING...";
+                    statusText.style.color = "#aa00ff";
+                    updateCoreColor(0xaa00ff);
+                } else if (data.status === "speaking") {
+                    statusText.innerText = "STATUS: VOCALIZING RESPONSE...";
+                    statusText.style.color = "#00ffff";
+                    updateCoreColor(0x00ffff);
+                    voiceVolume = data.volume || 0.0;
+                } else if (data.status === "idle") {
+                    statusText.innerText = "STATUS: SYSTEM READY // STANDBY";
+                    statusText.style.color = "#00f3ff";
+                    updateCoreColor(0x00f3ff);
+                    voiceVolume = 0.0;
+                }
+            };
+
+            ws.onclose = () => {
+                statusText.innerText = "STATUS: BACKEND DISCONNECTED (RETRYING...)";
+                statusText.style.color = "#ff0055";
+                setTimeout(connectBrain, 3000);
+            };
+        }
+        connectBrain();
+
+        // --- 2. TELEMETRY STREAM ---
         const fakeSnippets = [
             "ARC_REACTOR_OUTPUT: 100%",
-            "SMOOTH_ARCBALL_LOCK: OK",
+            "WEBSOCKET_BRIDGE: CONNECTED",
             "DYNAMIC_THRESHOLD: ADAPTIVE",
             "GESTURE_SMOOTHER: ACTIVE",
             "ZERO_JUMP_UNPINCH: OK",
@@ -121,7 +168,7 @@
         setInterval(updateCodePanels, 700);
         updateCodePanels();
 
-        // --- 2. THREE.JS 3D HUD SCENE ---
+        // --- 3. THREE.JS 3D HUD SCENE ---
         const scene = new THREE.Scene();
         const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
         const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
@@ -192,22 +239,18 @@
 
         camera.position.z = 7.0;
 
-        // --- 3. RELATIVE DELTA-GRAB ROTATION & SCALE STATE ---
+        // --- 4. RELATIVE ROTATION & SCALE STATE ---
         let targetScale = 1.0, currentScale = 1.0;
         let targetRotX = 0, targetRotY = 0, targetRotZ = 0;
         let activeColorHex = 0x00f3ff;
 
-        // Tracking state variables
         let isSinglePinching = false;
         let isDualPinching = false;
-
         let singleStartPt = { x: 0, y: 0 };
         let baseRotX = 0, baseRotY = 0;
-
         let dualStartDist = 0, dualStartAngle = 0;
         let baseScale = 1.0, baseRotZ = 0;
 
-        // Smoothed landmark positions to eliminate noise
         let smoothedHand1 = null;
         let smoothedHand2 = null;
 
@@ -220,7 +263,6 @@
             }
         }
 
-        // --- 4. ACCURATE DYNAMIC PINCH CALCULATION ---
         function checkPinch(landmarks) {
             const thumb = landmarks[4];
             const index = landmarks[8];
@@ -247,7 +289,6 @@
             }));
         }
 
-        // --- 5. MEDIAPIPE RESULTS PROCESSOR ---
         function onResults(results) {
             const handsList = results.multiHandLandmarks;
 
@@ -264,7 +305,6 @@
                 }
 
                 if (handsList.length >= 2 && p1Pinch && p2Pinch) {
-                    // DUAL PINCH ACTIVE
                     const h1 = smoothedHand1[8];
                     const h2 = smoothedHand2[8];
 
@@ -284,16 +324,9 @@
 
                     const scaleFactor = curDist / (dualStartDist || 0.01);
                     targetScale = Math.max(0.4, Math.min(3.5, baseScale * scaleFactor));
-
-                    let angleDelta = curAngle - dualStartAngle;
-                    targetRotZ = baseRotZ + angleDelta;
-
-                    updateCoreColor(0xff00aa);
-                    statusText.innerText = "STATUS: DUAL PINCH [ZOOM & ROTATE Z]";
-                    statusText.style.color = "#ff00aa";
+                    targetRotZ = baseRotZ + (curAngle - dualStartAngle);
 
                 } else if (p1Pinch || p2Pinch) {
-                    // SINGLE PINCH ACTIVE
                     const activeHand = (p1Pinch ? smoothedHand1 : smoothedHand2)[8];
 
                     if (!isSinglePinching || isDualPinching) {
@@ -304,32 +337,18 @@
                         baseRotY = targetRotY;
                     }
 
-                    const deltaX = (activeHand.x - singleStartPt.x) * 6.0;
-                    const deltaY = (activeHand.y - singleStartPt.y) * 6.0;
-
-                    targetRotY = baseRotY + deltaX;
-                    targetRotX = baseRotX + deltaY;
-
-                    updateCoreColor(0x00ff88);
-                    statusText.innerText = "STATUS: SINGLE PINCH [ARCBALL ROTATE]";
-                    statusText.style.color = "#00ff88";
+                    targetRotY = baseRotY + (activeHand.x - singleStartPt.x) * 6.0;
+                    targetRotX = baseRotX + (activeHand.y - singleStartPt.y) * 6.0;
 
                 } else {
-                    // RELEASED
                     isSinglePinching = false;
                     isDualPinching = false;
-                    updateCoreColor(0x00f3ff);
-                    statusText.innerText = "STATUS: HANDS READY (PINCH TO GRAB)";
-                    statusText.style.color = "#ffaa00";
                 }
             } else {
                 smoothedHand1 = null;
                 smoothedHand2 = null;
                 isSinglePinching = false;
                 isDualPinching = false;
-                updateCoreColor(0x00f3ff);
-                statusText.innerText = "STATUS: READY - SHOW HANDS";
-                statusText.style.color = "#00f3ff";
             }
         }
 
@@ -356,9 +375,6 @@
                 videoElement.srcObject = stream;
                 
                 videoElement.onloadedmetadata = () => {
-                    statusText.innerText = "STATUS: READY - SHOW HANDS";
-                    statusText.style.color = "#00f3ff";
-                    
                     async function processVideo() {
                         if (!isProcessing && videoElement.readyState >= 2) {
                             isProcessing = true;
@@ -371,17 +387,15 @@
                 };
             } catch (err) {
                 console.error("Camera access error:", err);
-                statusText.innerText = "ERROR: CAMERA ACCESS DENIED";
-                statusText.style.color = "#ff3333";
             }
         }
-
         startCamera();
 
-        // --- 6. ANIMATION LOOP ---
+        // --- 5. ANIMATION LOOP ---
         function animate() {
             requestAnimationFrame(animate);
 
+            // Ring Rotations
             ring1.rotation.z += 0.012; ring1.rotation.y += 0.007;
             ring2.rotation.z -= 0.014; ring2.rotation.x += 0.008;
             ring3.rotation.y += 0.016; ring3.rotation.z += 0.005;
@@ -390,14 +404,15 @@
             outerShell.rotation.y -= 0.008;
             crystalGroup.rotation.z += 0.010; crystalGroup.rotation.y += 0.006;
 
+            // Interpolate Gesture Rotations
             coreGroup.rotation.y += (targetRotY - coreGroup.rotation.y) * 0.12;
             coreGroup.rotation.x += (targetRotX - coreGroup.rotation.x) * 0.12;
             coreGroup.rotation.z += (targetRotZ - coreGroup.rotation.z) * 0.12;
 
-            currentScale += (targetScale - currentScale) * 0.12;
+            // Scale Core based on Speech Pulse Volume
+            let dynamicVoiceScale = targetScale + (voiceVolume * 0.6);
+            currentScale += (dynamicVoiceScale - currentScale) * 0.12;
             coreGroup.scale.setScalar(currentScale);
-
-            coreGroup.position.set(0, 0, 0);
 
             renderer.render(scene, camera);
         }
