@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>JARVIS / ULTRON ADVANCED 3D HUD - SMOOTH GRAB</title>
+    <style>
+        body { 
+            margin: 0; 
+            overflow: hidden; 
+            background-color: #010206; 
+            font-family: 'Courier New', monospace; 
+            user-select: none;
+        }
+        canvas { display: block; position: absolute; top: 0; left: 0; z-index: 1; }
+        
+        body::before {
+            content: " ";
+            display: block; position: absolute; top: 0; left: 0; bottom: 0; right: 0;
+            background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.03), rgba(0, 255, 0, 0.01), rgba(0, 0, 255, 0.03));
+            z-index: 4; background-size: 100% 3px, 6px 100%; pointer-events: none;
+        }
+
+        #webcam {
+            position: absolute; bottom: 20px; right: 20px;
+            width: 170px; height: 125px; z-index: 5;
+            border-radius: 6px; border: 1.5px solid #00f3ff;
+            transform: scaleX(-1); opacity: 0.7;
+            box-shadow: 0 0 20px rgba(0, 243, 255, 0.3);
+            object-fit: cover;
+        }
+
+        #overlay {
+            position: absolute; top: 20px; left: 20px; z-index: 5;
+            color: #00f3ff; font-size: 14px; letter-spacing: 2px;
+            pointer-events: none; text-shadow: 0 0 8px #0088ff;
+        }
+
+        .hud-corner {
+            position: absolute; width: 30px; height: 30px; z-index: 5;
+            border: 2px solid #00f3ff; pointer-events: none;
+            box-shadow: 0 0 10px rgba(0, 243, 255, 0.5);
+        }
+        .top-left { top: 15px; left: 15px; border-right: none; border-bottom: none; }
+        .top-right { top: 15px; right: 15px; border-left: none; border-bottom: none; }
+        .bottom-left { bottom: 15px; left: 15px; border-right: none; border-top: none; }
+        .bottom-right { bottom: 15px; right: 15px; border-left: none; border-top: none; }
+
+        .code-panel {
+            position: absolute; top: 90px; z-index: 5;
+            color: rgba(0, 243, 255, 0.5); font-size: 11px;
+            pointer-events: none; line-height: 1.4;
+            font-family: monospace; text-shadow: 0 0 5px rgba(0, 136, 255, 0.5);
+        }
+        #code-left { left: 20px; width: 230px; }
+        #code-right { right: 20px; width: 230px; text-align: right; }
+
+        .status { color: #00f3ff; font-size: 13px; margin-top: 5px; font-weight: bold; }
+        #ai-text { color: #00ffff; font-size: 18px; margin-top: 10px; font-weight: bold; max-width: 600px; }
+
+        #reticle {
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            width: 380px; height: 380px; z-index: 3; pointer-events: none; opacity: 0.45;
+        }
+    </style>
+    <!-- Three.js & MediaPipe -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+</head>
+<body>
+
+    <div class="hud-corner top-left"></div>
+    <div class="hud-corner top-right"></div>
+    <div class="hud-corner bottom-left"></div>
+    <div class="hud-corner bottom-right"></div>
+
+    <div id="overlay">
+        SYSTEM: MARK-VII ARC HUD [SMOOTH ARCBALL]<br>
+        <div class="status" id="status-text">STATUS: INITIALIZING...</div>
+        <div id="ai-text"></div>
+    </div>
+
+    <div id="code-left" class="code-panel"></div>
+    <div id="code-right" class="code-panel"></div>
+
+    <svg id="reticle" viewBox="0 0 200 200">
+        <circle cx="100" cy="100" r="95" stroke="#00f3ff" stroke-width="0.8" fill="none" stroke-dasharray="4,4"/>
+        <circle cx="100" cy="100" r="80" stroke="#00aaff" stroke-width="0.5" fill="none"/>
+        <line x1="100" y1="0" x2="100" y2="20" stroke="#00f3ff" stroke-width="1.5"/>
+        <line x1="100" y1="180" x2="100" y2="200" stroke="#00f3ff" stroke-width="1.5"/>
+        <line x1="0" y1="100" x2="20" y2="100" stroke="#00f3ff" stroke-width="1.5"/>
+        <line x1="180" y1="100" x2="200" y2="100" stroke="#00f3ff" stroke-width="1.5"/>
+    </svg>
+
+    <video id="webcam" autoplay playsinline muted></video>
+
+    <script>
+        const statusText = document.getElementById('status-text');
+        const aiText = document.getElementById('ai-text');
+
+        // --- 1. TELEMETRY STREAM ---
+        const fakeSnippets = [
+            "ARC_REACTOR_OUTPUT: 100%",
+            "SMOOTH_ARCBALL_LOCK: OK",
+            "DYNAMIC_THRESHOLD: ADAPTIVE",
+            "GESTURE_SMOOTHER: ACTIVE",
+            "ZERO_JUMP_UNPINCH: OK",
+            "DECRYPT_STREAM // 4096-bit",
+            "POWER_GRID: STABLE",
+            "DELTA_GRAB_ENGINE: READY"
+        ];
+
+        function updateCodePanels() {
+            let leftHTML = "", rightHTML = "";
+            for (let i = 0; i < 10; i++) {
+                leftHTML += fakeSnippets[Math.floor(Math.random() * fakeSnippets.length)] + "<br>";
+                rightHTML += fakeSnippets[Math.floor(Math.random() * fakeSnippets.length)] + "<br>";
+            }
+            document.getElementById('code-left').innerHTML = leftHTML;
+            document.getElementById('code-right').innerHTML = rightHTML;
+        }
+        setInterval(updateCodePanels, 700);
+        updateCodePanels();
+
+        // --- 2. THREE.JS 3D HUD SCENE ---
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(window.devicePixelRatio);
+        document.body.appendChild(renderer.domElement);
+
+        const coreGroup = new THREE.Group();
+        scene.add(coreGroup);
+
+        const light = new THREE.PointLight(0x00ffff, 3.0, 50);
+        light.position.set(0, 0, 10);
+        scene.add(light);
+        scene.add(new THREE.AmbientLight(0x001133));
+
+        const innerGeo = new THREE.SphereGeometry(0.5, 16, 16);
+        const innerMat = new THREE.MeshBasicMaterial({ color: 0x00ffff, wireframe: true, transparent: true, opacity: 0.95 });
+        const innerCore = new THREE.Mesh(innerGeo, innerMat);
+        coreGroup.add(innerCore);
+
+        const shellGeo = new THREE.IcosahedronGeometry(0.9, 2);
+        const shellMat = new THREE.MeshBasicMaterial({ color: 0x00d2ff, wireframe: true, transparent: true, opacity: 0.65 });
+        const outerShell = new THREE.Mesh(shellGeo, shellMat);
+        coreGroup.add(outerShell);
+
+        const crystalGroup = new THREE.Group();
+        const cryGeo = new THREE.OctahedronGeometry(0.18);
+        const cryMat = new THREE.MeshBasicMaterial({ color: 0x00ffff, wireframe: true });
+        for (let i = 0; i < 6; i++) {
+            const crystal = new THREE.Mesh(cryGeo, cryMat);
+            const angle = (i / 6) * Math.PI * 2;
+            crystal.position.set(Math.cos(angle) * 1.8, Math.sin(angle) * 1.8, (Math.random() - 0.5) * 0.5);
+            crystalGroup.add(crystal);
+        }
+        coreGroup.add(crystalGroup);
+
+        const ringMatPrimary = new THREE.MeshBasicMaterial({ color: 0x00f3ff, wireframe: true, transparent: true, opacity: 0.5 });
+        const ringMatSecondary = new THREE.MeshBasicMaterial({ color: 0x0088ff, wireframe: true, transparent: true, opacity: 0.4 });
+        const ringMatGold = new THREE.MeshBasicMaterial({ color: 0x00e5ff, wireframe: true, transparent: true, opacity: 0.7 });
+
+        const ring1 = new THREE.Mesh(new THREE.TorusGeometry(1.4, 0.025, 16, 80), ringMatPrimary);
+        const ring2 = new THREE.Mesh(new THREE.TorusGeometry(2.1, 0.035, 16, 100), ringMatSecondary);
+        const ring3 = new THREE.Mesh(new THREE.TorusGeometry(2.8, 0.02, 12, 90), ringMatGold);
+        const ring4 = new THREE.Mesh(new THREE.TorusGeometry(3.5, 0.04, 8, 60), ringMatPrimary);
+
+        ring1.rotation.x = Math.PI / 3;
+        ring2.rotation.y = Math.PI / 4;
+        ring3.rotation.x = -Math.PI / 6;
+        ring4.rotation.z = Math.PI / 5;
+
+        coreGroup.add(ring1); coreGroup.add(ring2); coreGroup.add(ring3); coreGroup.add(ring4);
+
+        const particleCount = 900;
+        const positions = new Float32Array(particleCount * 3);
+        for (let i = 0; i < particleCount; i++) {
+            const u = Math.random(), v = Math.random();
+            const theta = u * 2.0 * Math.PI, phi = Math.acos(2.0 * v - 1.0);
+            const r = 1.6 + Math.random() * 2.0;
+            positions[i * 3] = r * Math.sin(phi) * Math.cos(theta);
+            positions[i * 3 + 1] = r * Math.sin(phi) * Math.sin(theta);
+            positions[i * 3 + 2] = r * Math.cos(phi);
+        }
+        const particleGeo = new THREE.BufferGeometry();
+        particleGeo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        const particleMat = new THREE.PointsMaterial({ size: 0.05, color: 0x00ffff, transparent: true, opacity: 0.85, blending: THREE.AdditiveBlending });
+        const particleCloud = new THREE.Points(particleGeo, particleMat);
+        coreGroup.add(particleCloud);
+
+        camera.position.z = 7.0;
+
+        // --- 3. RELATIVE DELTA-GRAB ROTATION & SCALE STATE ---
+        let targetScale = 1.0, currentScale = 1.0;
+        let targetRotX = 0, targetRotY = 0, targetRotZ = 0;
+        let activeColorHex = 0x00f3ff;
+
+        // Tracking state variables
+        let isSinglePinching = false;
+        let isDualPinching = false;
+
+        let singleStartPt = { x: 0, y: 0 };
+        let baseRotX = 0, baseRotY = 0;
+
+        let dualStartDist = 0, dualStartAngle = 0;
+        let baseScale = 1.0, baseRotZ = 0;
+
+        // Smoothed landmark positions to eliminate noise
+        let smoothedHand1 = null;
+        let smoothedHand2 = null;
+
+        function updateCoreColor(hexColor) {
+            if (activeColorHex !== hexColor) {
+                activeColorHex = hexColor;
+                innerMat.color.setHex(hexColor);
+                ringMatPrimary.color.setHex(hexColor);
+                particleMat.color.setHex(hexColor);
+            }
+        }
+
+        // --- 4. ACCURATE DYNAMIC PINCH CALCULATION ---
+        function checkPinch(landmarks) {
+            const thumb = landmarks[4];
+            const index = landmarks[8];
+            const wrist = landmarks[0];
+            const middleMCP = landmarks[9];
+
+            const palmDx = wrist.x - middleMCP.x;
+            const palmDy = wrist.y - middleMCP.y;
+            const palmSize = Math.sqrt(palmDx * palmDx + palmDy * palmDy) || 0.1;
+
+            const pinchDx = thumb.x - index.x;
+            const pinchDy = thumb.y - index.y;
+            const pinchDist = Math.sqrt(pinchDx * pinchDx + pinchDy * pinchDy);
+
+            return (pinchDist / palmSize) < 0.38;
+        }
+
+        function smoothLandmarks(current, previous, factor = 0.35) {
+            if (!previous) return current;
+            return current.map((pt, idx) => ({
+                x: previous[idx].x + (pt.x - previous[idx].x) * factor,
+                y: previous[idx].y + (pt.y - previous[idx].y) * factor,
+                z: previous[idx].z + (pt.z - previous[idx].z) * factor
+            }));
+        }
+
+        // --- 5. MEDIAPIPE RESULTS PROCESSOR ---
+        function onResults(results) {
+            const handsList = results.multiHandLandmarks;
+
+            if (handsList && handsList.length > 0) {
+                smoothedHand1 = smoothLandmarks(handsList[0], smoothedHand1);
+                const p1Pinch = checkPinch(smoothedHand1);
+
+                let p2Pinch = false;
+                if (handsList.length >= 2) {
+                    smoothedHand2 = smoothLandmarks(handsList[1], smoothedHand2);
+                    p2Pinch = checkPinch(smoothedHand2);
+                } else {
+                    smoothedHand2 = null;
+                }
+
+                if (handsList.length >= 2 && p1Pinch && p2Pinch) {
+                    // DUAL PINCH ACTIVE
+                    const h1 = smoothedHand1[8];
+                    const h2 = smoothedHand2[8];
+
+                    const dx = h2.x - h1.x;
+                    const dy = h2.y - h1.y;
+                    const curDist = Math.sqrt(dx * dx + dy * dy);
+                    const curAngle = Math.atan2(dy, dx);
+
+                    if (!isDualPinching) {
+                        isDualPinching = true;
+                        isSinglePinching = false;
+                        dualStartDist = curDist;
+                        dualStartAngle = curAngle;
+                        baseScale = targetScale;
+                        baseRotZ = targetRotZ;
+                    }
+
+                    const scaleFactor = curDist / (dualStartDist || 0.01);
+                    targetScale = Math.max(0.4, Math.min(3.5, baseScale * scaleFactor));
+
+                    let angleDelta = curAngle - dualStartAngle;
+                    targetRotZ = baseRotZ + angleDelta;
+
+                    updateCoreColor(0xff00aa);
+                    statusText.innerText = "STATUS: DUAL PINCH [ZOOM & ROTATE Z]";
+                    statusText.style.color = "#ff00aa";
+
+                } else if (p1Pinch || p2Pinch) {
+                    // SINGLE PINCH ACTIVE
+                    const activeHand = (p1Pinch ? smoothedHand1 : smoothedHand2)[8];
+
+                    if (!isSinglePinching || isDualPinching) {
+                        isSinglePinching = true;
+                        isDualPinching = false;
+                        singleStartPt = { x: activeHand.x, y: activeHand.y };
+                        baseRotX = targetRotX;
+                        baseRotY = targetRotY;
+                    }
+
+                    const deltaX = (activeHand.x - singleStartPt.x) * 6.0;
+                    const deltaY = (activeHand.y - singleStartPt.y) * 6.0;
+
+                    targetRotY = baseRotY + deltaX;
+                    targetRotX = baseRotX + deltaY;
+
+                    updateCoreColor(0x00ff88);
+                    statusText.innerText = "STATUS: SINGLE PINCH [ARCBALL ROTATE]";
+                    statusText.style.color = "#00ff88";
+
+                } else {
+                    // RELEASED
+                    isSinglePinching = false;
+                    isDualPinching = false;
+                    updateCoreColor(0x00f3ff);
+                    statusText.innerText = "STATUS: HANDS READY (PINCH TO GRAB)";
+                    statusText.style.color = "#ffaa00";
+                }
+            } else {
+                smoothedHand1 = null;
+                smoothedHand2 = null;
+                isSinglePinching = false;
+                isDualPinching = false;
+                updateCoreColor(0x00f3ff);
+                statusText.innerText = "STATUS: READY - SHOW HANDS";
+                statusText.style.color = "#00f3ff";
+            }
+        }
+
+        const hands = new Hands({ 
+            locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}` 
+        });
+        
+        hands.setOptions({ 
+            maxNumHands: 2, 
+            modelComplexity: 1, 
+            minDetectionConfidence: 0.65,
+            minTrackingConfidence: 0.65
+        });
+        hands.onResults(onResults);
+
+        const videoElement = document.getElementById('webcam');
+        let isProcessing = false;
+
+        async function startCamera() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: "user" }
+                });
+                videoElement.srcObject = stream;
+                
+                videoElement.onloadedmetadata = () => {
+                    statusText.innerText = "STATUS: READY - SHOW HANDS";
+                    statusText.style.color = "#00f3ff";
+                    
+                    async function processVideo() {
+                        if (!isProcessing && videoElement.readyState >= 2) {
+                            isProcessing = true;
+                            await hands.send({ image: videoElement });
+                            isProcessing = false;
+                        }
+                        requestAnimationFrame(processVideo);
+                    }
+                    processVideo();
+                };
+            } catch (err) {
+                console.error("Camera access error:", err);
+                statusText.innerText = "ERROR: CAMERA ACCESS DENIED";
+                statusText.style.color = "#ff3333";
+            }
+        }
+
+        startCamera();
+
+        // --- 6. ANIMATION LOOP ---
+        function animate() {
+            requestAnimationFrame(animate);
+
+            ring1.rotation.z += 0.012; ring1.rotation.y += 0.007;
+            ring2.rotation.z -= 0.014; ring2.rotation.x += 0.008;
+            ring3.rotation.y += 0.016; ring3.rotation.z += 0.005;
+            ring4.rotation.x -= 0.010; ring4.rotation.z -= 0.012;
+            innerCore.rotation.x += 0.012; innerCore.rotation.y += 0.012;
+            outerShell.rotation.y -= 0.008;
+            crystalGroup.rotation.z += 0.010; crystalGroup.rotation.y += 0.006;
+
+            coreGroup.rotation.y += (targetRotY - coreGroup.rotation.y) * 0.12;
+            coreGroup.rotation.x += (targetRotX - coreGroup.rotation.x) * 0.12;
+            coreGroup.rotation.z += (targetRotZ - coreGroup.rotation.z) * 0.12;
+
+            currentScale += (targetScale - currentScale) * 0.12;
+            coreGroup.scale.setScalar(currentScale);
+
+            coreGroup.position.set(0, 0, 0);
+
+            renderer.render(scene, camera);
+        }
+        animate();
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+    </script>
+</body>
+</html>
