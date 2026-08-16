@@ -160,9 +160,10 @@
         // --- CONVERSATION MEMORY STORE ---
         let chatHistory = [];
 
-        // --- GEMINI API INTEGRATION WITH MEMORY ---
+        // --- GEMINI API INTEGRATION WITH HARDCODED KEY ---
         function getApiKey() {
-            return "AQ.Ab8RN6KJTA4xh894qA-IBaFzML470zsoTH6b4deZYDDc24vHHw";
+            // Replace the string below with your valid API key starting with AIzaSy...
+            return "YOUR_AIzaSy_KEY_HERE";
         }
 
         async function sendToGemini() {
@@ -170,8 +171,9 @@
             if (!promptText) return;
 
             const apiKey = getApiKey();
-            if (!apiKey) {
-                alert("API Key required!");
+            if (!apiKey || apiKey === "YOUR_AIzaSy_KEY_HERE") {
+                aiText.style.display = 'block';
+                aiText.innerText = "JARVIS: Please replace 'AQ.Ab8RN6LhNtKphof_jf3gF7Kp_Nd0fqEWFrSL2HM2phQse-BaaQ' in the code with a valid key starting with AIzaSy.";
                 return;
             }
 
@@ -198,7 +200,7 @@
 
                 const data = await response.json();
                 if (data.error) {
-                    aiText.innerText = "JARVIS: " + data.error.message;
+                    aiText.innerText = "JARVIS API Error: " + data.error.message;
                     chatHistory.pop();
                     return;
                 }
@@ -214,7 +216,7 @@
                     speakText(reply);
                 }
             } catch (err) {
-                aiText.innerText = "JARVIS: Connection error. Please try again.";
+                aiText.innerText = "JARVIS: Connection error. Please check your network and API key.";
                 chatHistory.pop();
             }
         }
