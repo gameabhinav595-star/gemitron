@@ -162,12 +162,7 @@
 
         // --- GEMINI API INTEGRATION WITH MEMORY ---
         function getApiKey() {
-            let key = localStorage.getItem('GEMINI_API_KEY');
-            if (!key) {
-                key = prompt("Please enter your Gemini API Key:");
-                if (key) localStorage.setItem('GEMINI_API_KEY', key);
-            }
-            return key;
+            return "AQ.Ab8RN6KJTA4xh894qA-IBaFzML470zsoTH6b4deZYDDc24vHHw";
         }
 
         async function sendToGemini() {
